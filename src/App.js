@@ -1,27 +1,46 @@
 import React, { useEffect, useState } from "react";
 import "./App.css";
-/* ethers 変数を使えるようにする*/
 import { ethers } from "ethers";
-/* ABIファイルを含むWavePortal.jsonファイルをインポートする*/
 import abi from "./utils/WavePortal.json";
 
 const App = () => {
-  /* ユーザーのパブリックウォレットを保存するために使用する状態変数を定義 */
   const [currentAccount, setCurrentAccount] = useState("");
-  /* ユーザーのメッセージを保存するために使用する状態変数を定義 */
   const [messageValue, setMessageValue] = useState("");
-  /* すべてのwavesを保存する状態変数を定義 */
   const [allWaves, setAllWaves] = useState([]);
-  console.log("currentAccount: ", currentAccount);
-  /* デプロイされたコントラクトのアドレスを保持する変数を作成 */
   const contractAddress = process.env.REACT_APP_CONTRACT_ADDRESS;
-  /* コントラクトからすべてのwavesを取得するメソッドを作成 */
-  /* ABIの内容を参照する変数を作成 */
   const contractABI = abi.abi;
+
+  useEffect(() => {
+    const getCurrentAccountAndAllWaves = async () => {
+      try {
+        const { ethereum } = window;
+        if (!ethereum) {
+          console.log("Make sure you have MetaMask!");
+          return;
+        } else {
+          console.log("We have the ethereum object", ethereum);
+        }
+  
+        // ユーザーのウォレットへのアクセスが許可されているかどうかを確認
+        const accounts = await ethereum.request({ method: "eth_accounts" });
+  
+        if (accounts.length !== 0) {
+          const account = accounts[0];
+          console.log("Found an authorized account:", account);
+          setCurrentAccount(account);
+          getAllWaves();
+        } else {
+          console.log("No authorized account found");
+        }
+      } catch (error) {
+        console.log(error);
+      }
+    };
+    getCurrentAccountAndAllWaves();
+  }, [currentAccount]);
 
   const getAllWaves = async () => {
     const { ethereum } = window;
-
     try {
       if (ethereum) {
         const provider = new ethers.providers.Web3Provider(ethereum);
@@ -31,9 +50,8 @@ const App = () => {
           contractABI,
           signer
         );
-        /* コントラクトからgetAllWavesメソッドを呼び出す */
+
         const waves = await wavePortalContract.getAllWaves();
-        /* UIに必要なのは、アドレス、タイムスタンプ、メッセージだけなので、以下のように設定 */
         const wavesCleaned = waves.map((wave) => {
           return {
             address: wave.waver,
@@ -41,7 +59,6 @@ const App = () => {
             message: wave.message,
           };
         });
-        /* React Stateにデータを格納する */
         setAllWaves(wavesCleaned);
       } else {
         console.log("Ethereum object doesn't exist!");
@@ -51,13 +68,11 @@ const App = () => {
     }
   };
 
-  /**
-   * `emit`されたイベントをフロントエンドに反映させる
-   */
+  // wave の購読
   useEffect(() => {
     let wavePortalContract;
 
-    const onNewWave = (from, timestamp, message) => {
+    const recieveNewWave = (from, timestamp, message) => {
       console.log("NewWave", from, timestamp, message);
       setAllWaves((prevState) => [
         ...prevState,
@@ -68,7 +83,8 @@ const App = () => {
         },
       ]);
     };
-    /* NewWaveイベントがコントラクトから発信されたときに、情報をを受け取ります */
+
+    // wavePortalContract の NewWave emit を購読
     if (window.ethereum) {
       const provider = new ethers.providers.Web3Provider(window.ethereum);
       const signer = provider.getSigner();
@@ -78,41 +94,17 @@ const App = () => {
         contractABI,
         signer
       );
-      wavePortalContract.on("NewWave", onNewWave);
+      wavePortalContract.on("NewWave", recieveNewWave);
     }
-    /*メモリリークを防ぐために、NewWaveのイベントを解除します*/
+
+    // 購読解除
     return () => {
       if (wavePortalContract) {
-        wavePortalContract.off("NewWave", onNewWave);
+        wavePortalContract.off("NewWave", recieveNewWave);
       }
     };
-  }, []);
+  }, [contractABI, contractAddress]);
 
-  /* window.ethereumにアクセスできることを確認 */
-  const checkIfWalletIsConnected = async () => {
-    try {
-      const { ethereum } = window;
-      if (!ethereum) {
-        console.log("Make sure you have MetaMask!");
-        return;
-      } else {
-        console.log("We have the ethereum object", ethereum);
-      }
-      /* ユーザーのウォレットへのアクセスが許可されているかどうかを確認 */
-      const accounts = await ethereum.request({ method: "eth_accounts" });
-      if (accounts.length !== 0) {
-        const account = accounts[0];
-        console.log("Found an authorized account:", account);
-        setCurrentAccount(account);
-        getAllWaves();
-      } else {
-        console.log("No authorized account found");
-      }
-    } catch (error) {
-      console.log(error);
-    }
-  };
-  /* connectWalletメソッドを実装 */
   const connectWallet = async () => {
     try {
       const { ethereum } = window;
@@ -129,28 +121,30 @@ const App = () => {
       console.log(error);
     }
   };
-  /* waveの回数をカウントする関数を実装 */
+
   const wave = async () => {
     try {
       const { ethereum } = window;
       if (ethereum) {
         const provider = new ethers.providers.Web3Provider(ethereum);
         const signer = provider.getSigner();
-        /* ABIを参照 */
         const wavePortalContract = new ethers.Contract(
           contractAddress,
           contractABI,
           signer
         );
+        
         let count = await wavePortalContract.getTotalWaves();
         console.log("Retrieved total wave count...", count.toNumber());
-        /* コントラクトに👋（wave）を書き込む */
+
         const waveTxn = await wavePortalContract.wave(messageValue, {
           gasLimit: 300000,
-        });
+        });        
         console.log("Mining...", waveTxn.hash);
+
         await waveTxn.wait();
         console.log("Mined -- ", waveTxn.hash);
+
         count = await wavePortalContract.getTotalWaves();
         console.log("Retrieved total wave count...", count.toNumber());
       } else {
@@ -160,11 +154,6 @@ const App = () => {
       console.log(error);
     }
   };
-
-  /* WEBページがロードされたときに下記の関数を実行 */
-  useEffect(() => {
-    checkIfWalletIsConnected();
-  }, []);
 
   return (
     <div className="mainContainer">
