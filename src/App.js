@@ -11,7 +11,7 @@ const App = () => {
   const contractABI = abi.abi;
 
   useEffect(() => {
-    const getCurrentAccountAndAllWaves = async () => {
+    const checkWalletConnection = async () => {
       try {
         const { ethereum } = window;
         if (!ethereum) {
@@ -28,7 +28,6 @@ const App = () => {
           const account = accounts[0];
           console.log("Found an authorized account:", account);
           setCurrentAccount(account);
-          getAllWaves();
         } else {
           console.log("No authorized account found");
         }
@@ -36,8 +35,12 @@ const App = () => {
         console.log(error);
       }
     };
-    getCurrentAccountAndAllWaves();
-  }, [currentAccount]);
+    checkWalletConnection();
+  }, []);
+
+  useEffect(() => {
+    getAllWaves();
+  }, [currentAccount])
 
   const getAllWaves = async () => {
     const { ethereum } = window;
